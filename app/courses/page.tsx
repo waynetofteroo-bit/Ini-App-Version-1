@@ -18,19 +18,9 @@ async function getEnrolledCourses(): Promise<EnrolledCourse[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('supabase.co', 'supabase.co')}/`,
-    { cache: 'no-store' }
-  );
-
-  // Directly query via supabase for SSR
   const { data: userCourses } = await supabase
     .from('user_courses')
-    .select(`
-      id,
-      exam_date,
-      courses (id, course_name, exam_board, level)
-    `)
+    .select(`id, exam_date, courses (id, course_name, exam_board, level)`)
     .eq('user_id', user.id)
     .eq('active', true);
 
@@ -38,10 +28,23 @@ async function getEnrolledCourses(): Promise<EnrolledCourse[]> {
 
   const enriched = await Promise.all(
     userCourses.map(async (uc: any) => {
-      const { data: unitCount } = await supabase
+      // Unit count
+      const { count: unitsEnrolled } = await supabase
         .from('user_units')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('user_course_id', uc.id);
+
+      // Progress from rollup
+      const { data: rollup } = await supabase
+        .from('progress_rollup')
+        .select('topic_mastery')
+        .eq('user_course_id', uc.id)
+        .eq('user_id', user.id);
+
+      const topics = rollup ?? [];
+      const progressPct = topics.length > 0
+        ? Math.round(topics.reduce((sum: number, r: any) => sum + (r.topic_mastery ?? 0), 0) / topics.length * 100)
+        : 0;
 
       return {
         userCourseId: uc.id,
@@ -49,8 +52,8 @@ async function getEnrolledCourses(): Promise<EnrolledCourse[]> {
         examBoard: uc.courses?.exam_board ?? '',
         level: uc.courses?.level ?? '',
         examDate: uc.exam_date,
-        progressPct: 0,
-        unitsEnrolled: (unitCount as any) ?? 0,
+        progressPct,
+        unitsEnrolled: unitsEnrolled ?? 0,
       };
     })
   );
