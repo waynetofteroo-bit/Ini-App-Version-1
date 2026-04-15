@@ -105,6 +105,13 @@ export default async function DashboardPage({ searchParams }: Props) {
             </span>
             <h1 className="text-xl font-bold text-gray-900">{c?.course_name}</h1>
           </div>
+          <div className="flex items-center gap-3">
+          <Link
+            href="/onboarding/add"
+            className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
+          >
+            + Add course
+          </Link>
           {(allCourses?.length ?? 0) > 1 && (
             <select
               defaultValue={courseId}
@@ -116,6 +123,7 @@ export default async function DashboardPage({ searchParams }: Props) {
               ))}
             </select>
           )}
+          </div>
         </div>
 
         {/* 6-widget grid */}
