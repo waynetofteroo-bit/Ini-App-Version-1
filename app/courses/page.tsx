@@ -34,16 +34,22 @@ async function getEnrolledCourses(): Promise<EnrolledCourse[]> {
         .select('*', { count: 'exact', head: true })
         .eq('user_course_id', uc.id);
 
-      // Progress from rollup
+      // Progress from rollup — deduplicate by topic_id to avoid weighting
       const { data: rollup } = await supabase
         .from('progress_rollup')
-        .select('topic_mastery')
+        .select('topic_id, topic_mastery')
         .eq('user_course_id', uc.id)
         .eq('user_id', user.id);
 
-      const topics = rollup ?? [];
-      const progressPct = topics.length > 0
-        ? Math.round(topics.reduce((sum: number, r: any) => sum + (r.topic_mastery ?? 0), 0) / topics.length * 100)
+      const topicMap = new Map<string, number>();
+      for (const r of rollup ?? []) {
+        if (!topicMap.has(r.topic_id)) {
+          topicMap.set(r.topic_id, r.topic_mastery ?? 0);
+        }
+      }
+      const topicVals = Array.from(topicMap.values());
+      const progressPct = topicVals.length > 0
+        ? Math.round(topicVals.reduce((a, b) => a + b, 0) / topicVals.length * 100)
         : 0;
 
       return {
