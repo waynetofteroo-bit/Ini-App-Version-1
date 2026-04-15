@@ -24,6 +24,7 @@ function SessionContent() {
   const courseId = params.get('course');
   const unitId = params.get('unit_id');
   const topicId = params.get('topic_id');
+  const force = params.get('force');
   const backParam = params.get('back') ?? '/dashboard';
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -38,6 +39,7 @@ function SessionContent() {
     if (courseId) qs.set('course', courseId);
     if (unitId) qs.set('unit_id', unitId);
     if (topicId) qs.set('topic_id', topicId);
+    if (force) qs.set('force', force);
 
     fetch(`/api/session/queue?${qs}`)
       .then((r) => r.json())

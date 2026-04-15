@@ -153,7 +153,7 @@ export default async function DashboardPage({ searchParams }: Props) {
                 <p className="text-base font-medium text-gray-900">{weakest.name}</p>
                 <p className="text-xs text-gray-500">{Math.round(weakest.mastery * 100)}% mastery</p>
                 <Link
-                  href={`/session/new?unit_id=${weakest.unitId}&back=${backParam}`}
+                  href={`/session/new?unit_id=${weakest.unitId}&course=${courseId}&force=true&back=${backParam}`}
                   className="block text-center rounded-lg border border-indigo-500 text-indigo-600 text-sm font-medium py-2 hover:bg-indigo-50"
                 >
                   Focus here →

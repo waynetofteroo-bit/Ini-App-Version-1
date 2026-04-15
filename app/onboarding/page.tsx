@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 type Step = 1 | 2 | 3 | 4 | 5;
 
 interface Course {
-  id: string;
+  id?: string;
+  course_id?: string;
   course_code: string;
   course_name: string;
   exam_board: string;
@@ -32,22 +33,42 @@ export default function OnboardingPage() {
   const [examDate, setExamDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [loadingUnits, setLoadingUnits] = useState(false);
 
   useEffect(() => {
     if (level) {
       fetch(`/api/courses?board=${board}&level=${level}`)
         .then((r) => r.json())
-        .then(setCourses);
+        .then((data) => {
+          console.log('Courses response:', JSON.stringify(data));
+          setCourses(data);
+        })
+        .catch((e) => setError('Failed to load courses: ' + e.message));
     }
   }, [board, level]);
 
   useEffect(() => {
     if (selectedCourse) {
-      fetch(`/api/courses/${selectedCourse.id}/units`)
-        .then((r) => r.json())
+      const courseId = selectedCourse.id ?? selectedCourse.course_id;
+      console.log('Selected course:', JSON.stringify(selectedCourse));
+      console.log('Fetching units for courseId:', courseId);
+      setLoadingUnits(true);
+      setUnits([]);
+      setSelectedUnitIds([]);
+      fetch(`/api/courses/${courseId}/units`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`Server error ${r.status}`);
+          return r.json();
+        })
         .then((data: Unit[]) => {
+          console.log('Units response:', JSON.stringify(data));
           setUnits(data);
           setSelectedUnitIds(data.map((u) => u.id));
+          setLoadingUnits(false);
+        })
+        .catch((e) => {
+          setError('Failed to load units: ' + e.message);
+          setLoadingUnits(false);
         });
     }
   }, [selectedCourse]);
@@ -59,7 +80,7 @@ export default function OnboardingPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        course_id: selectedCourse!.id,
+        course_id: selectedCourse!.id ?? selectedCourse!.course_id,
         exam_date: examDate,
         unit_ids: selectedUnitIds,
         unit_exam_dates: unitExamDates,
@@ -202,6 +223,8 @@ export default function OnboardingPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />
             </div>
+            {loadingUnits && <p className="text-sm text-gray-400">Loading units…</p>}
+            {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {units.map((u) => (
                 <label key={u.id} className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer">

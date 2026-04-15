@@ -6,6 +6,7 @@ export async function GET(request: Request) {
   const courseId = searchParams.get('course');
   const unitId = searchParams.get('unit_id');
   const topicId = searchParams.get('topic_id');
+  const force = searchParams.get('force') === 'true';
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -27,9 +28,12 @@ export async function GET(request: Request) {
     `)
     .eq('user_id', user.id)
     .eq('user_course_id', courseId)
-    .lte('next_review_at', new Date().toISOString())
     .order('blended_score', { ascending: false })
     .limit(20);
+
+  if (!force) {
+    queueQuery = queueQuery.lte('next_review_at', new Date().toISOString());
+  }
 
   const { data: queue, error } = await queueQuery;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
