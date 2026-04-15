@@ -101,7 +101,10 @@ export default async function DashboardPage({ searchParams }: Props) {
         {/* Course context bar */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+            <Link href="/courses" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+              ← My courses
+            </Link>
+            <span className="block text-xs font-semibold uppercase tracking-wide text-indigo-600 mt-1">
               {c?.exam_board} · {c?.level}
             </span>
             <h1 className="text-xl font-bold text-gray-900">{c?.course_name}</h1>
