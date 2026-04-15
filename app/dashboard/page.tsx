@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { BloomDepthBar } from '@/components/BloomDepthBar';
 import { CourseProgressRing } from '@/components/CourseProgressRing';
+import { CourseSwitcher } from '@/components/CourseSwitcher';
 import { Suspense } from 'react';
 
 interface Props {
@@ -113,15 +114,10 @@ export default async function DashboardPage({ searchParams }: Props) {
             + Add course
           </Link>
           {(allCourses?.length ?? 0) > 1 && (
-            <select
-              defaultValue={courseId}
-              onChange={(e) => { window.location.href = `/dashboard?course=${e.target.value}`; }}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5"
-            >
-              {allCourses?.map((ac: any) => (
-                <option key={ac.id} value={ac.id}>{ac.courses?.course_name}</option>
-              ))}
-            </select>
+            <CourseSwitcher
+              currentId={courseId}
+              courses={(allCourses ?? []).map((ac: any) => ({ id: ac.id, name: ac.courses?.course_name ?? '' }))}
+            />
           )}
           </div>
         </div>
