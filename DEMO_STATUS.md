@@ -1,6 +1,6 @@
 # DEMO_STATUS.md
 
-Last updated: 2026-04-27 (session 4 — marker upgrade)
+Last updated: 2026-04-27 (session 4.5 — marker cleanup)
 
 ---
 
@@ -20,6 +20,9 @@ Last updated: 2026-04-27 (session 4 — marker upgrade)
   - Full audit trail written on every call (`marking_audit_log`: raw request, raw response, latency, cost estimate)
   - Progressive enrichment prompt: uses model_answer, examiner_notes, command_word, technique, levels-based rubric when available; backfilled questions (sparse fields) tolerated on same code path
   - Structured response returned: band, score, bloom_demonstrated, gaps, mark_points_awarded, mark_points_missed, feedback
+  - POST body now requires user_course_id (current session page does not yet send this — essay UI work in session 5 will address)
+- questions.marks backfilled (session 4.5, migration 016): all 21 essay questions now have explicit marks values derived from essay_mark_scheme_levels level_order=1 mark_range
+- Fallback logic removed from marker (session 4.5): resolveMaxMarks and resolveMarkPoints now throw explicitly on null — no silent JSONB fallback
 - Progress dashboard: course progress ring, unit mastery bars (RAG-banded), Bloom depth profile, exam countdown
 - Topic drill-down: per-topic Bloom breakdown, gap flags, prerequisite links
 - Knowledge graph: Cytoscape.js visualisation, nodes coloured by mastery
@@ -57,6 +60,8 @@ Last updated: 2026-04-27 (session 4 — marker upgrade)
 
 ## Current issues to address
 
-- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; prompt skips it gracefully via progressive enrichment
+- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; prompt skips gracefully via progressive enrichment
 - 21 backfilled questions have `ao` and `wjec_tier` as NULL — same cause; prompt skips gracefully
 - `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA); no permissive RLS policy — writes use service_role client
+- Rate limit upsert has a theoretical race condition on two simultaneous first-ever requests from the same user — not a practical issue at current scale; parked for future hardening
+- `marking_prompt` JSONB column retained in DB and in type definitions but no longer read by the marker — to be dropped in a future migration once data is confirmed fully migrated

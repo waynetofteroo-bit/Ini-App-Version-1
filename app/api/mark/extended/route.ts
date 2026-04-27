@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { callClaudeForMarking } from '@/lib/claude';
 import {
   buildMarkingPrompt,
-  resolveMaxMarks,
   type MarkingQuestion,
   type MarkingLevel,
   type MarkingTechnique,

@@ -3,8 +3,8 @@
 // essay_mark_scheme_levels rows, and an optional linked technique.
 //
 // Progressive enrichment: every optional field is included only when
-// non-null. Backfilled questions (sparse new columns) and fully-imported
-// questions (all columns populated) share a single code path.
+// non-null. All essay questions are expected to have marks and
+// mark_scheme_points populated (via migration 016 backfill).
 
 export const MARKING_PROMPT_VERSION = 'v2-progressive-enrichment-2026-04-27';
 
@@ -23,7 +23,7 @@ export interface MarkingQuestion {
   model_answer: string | null;
   examiner_notes: string | null;
   question_version: string | null;
-  marking_prompt: Record<string, unknown> | null; // legacy JSONB — fallback only
+  marking_prompt: Record<string, unknown> | null; // retained in DB — not read here
 }
 
 export interface MarkingLevel {
@@ -47,40 +47,27 @@ export interface MarkingPromptResult {
   systemPrompt: string;
   userMessage: string;
   version: string;
-  maxMarks: number; // exposed so caller can derive `correct` without re-resolving
+  maxMarks: number;
 }
 
-// ── Fallback helpers ─────────────────────────────────────────────────────────
-// Backfilled questions have null on new columns; these read the legacy JSONB.
+// ── Field accessors — throw explicitly on missing data ───────────────────────
 
-export function resolveMaxMarks(
-  question: MarkingQuestion,
-  levels: MarkingLevel[]
-): number {
-  if (question.marks != null) return question.marks;
-
-  // Parse denominator from Full band mark_range: "6/6" → 6
-  const fullLevel = levels.find(l => l.level_label === 'Full' || l.level_order === 1);
-  if (fullLevel?.mark_range.includes('/')) {
-    const n = parseInt(fullLevel.mark_range.split('/')[1], 10);
-    if (!isNaN(n)) return n;
+export function resolveMaxMarks(question: MarkingQuestion): number {
+  if (question.marks == null) {
+    throw new Error(
+      `Essay question ${question.id} has no marks value. Run migration 016 to backfill.`
+    );
   }
-
-  // Legacy JSONB: marking_prompt.rubric_bands.Full.marks
-  const legacyMarks = (question.marking_prompt as Record<string, unknown> | null)
-    ?.rubric_bands as Record<string, unknown> | undefined;
-  const fullBand = legacyMarks?.Full as Record<string, unknown> | undefined;
-  if (typeof fullBand?.marks === 'number') return fullBand.marks;
-
-  return 6; // sensible default for WJEC L4/L5
+  return question.marks;
 }
 
 function resolveMarkPoints(question: MarkingQuestion): string[] {
-  if (Array.isArray(question.mark_scheme_points) && question.mark_scheme_points.length > 0) {
-    return question.mark_scheme_points as string[];
+  if (!Array.isArray(question.mark_scheme_points) || question.mark_scheme_points.length === 0) {
+    throw new Error(
+      `Essay question ${question.id} has no mark_scheme_points. Run the backfill script.`
+    );
   }
-  const legacy = (question.marking_prompt as Record<string, unknown> | null)?.markscheme_points;
-  return Array.isArray(legacy) ? (legacy as string[]) : [];
+  return question.mark_scheme_points as string[];
 }
 
 // ── JSON response schema (embedded in system prompt) ─────────────────────────
@@ -103,7 +90,7 @@ export function buildMarkingPrompt(
   studentResponse: string,
   technique?: MarkingTechnique | null
 ): MarkingPromptResult {
-  const maxMarks     = resolveMaxMarks(question, levels);
+  const maxMarks     = resolveMaxMarks(question);
   const markPoints   = resolveMarkPoints(question);
   const sortedLevels = [...levels].sort((a, b) => a.level_order - b.level_order);
 
@@ -142,12 +129,10 @@ export function buildMarkingPrompt(
   }
 
   // Mark scheme atomic points
-  if (markPoints.length > 0) {
-    sections.push([
-      '## Mark scheme — atomic points',
-      ...markPoints.map((p, i) => `${i + 1}. ${p}`),
-    ].join('\n'));
-  }
+  sections.push([
+    '## Mark scheme — atomic points',
+    ...markPoints.map((p, i) => `${i + 1}. ${p}`),
+  ].join('\n'));
 
   // Indicative content
   if (question.indicative_content) {
