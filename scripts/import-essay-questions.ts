@@ -258,7 +258,7 @@ async function main() {
 
   // Validate Q# cross-references
   const qNums = new Set(questions.map(q => q.q_num));
-  for (const qNum of msByQNum.keys()) {
+  for (const qNum of Array.from(msByQNum.keys())) {
     if (!qNums.has(qNum)) {
       throw new Error(`Mark Scheme Detail references Q# "${qNum}" which does not exist in Q&A Bank sheet`);
     }
@@ -286,7 +286,7 @@ async function main() {
 
   if (DRY_RUN) {
     // Report mapping status without hitting the DB
-    const unmappedNodes = [...new Set(questions.map(q => q.topic_node))]
+    const unmappedNodes = Array.from(new Set(questions.map(q => q.topic_node)))
       .filter(t => !conceptMapping.has(t) || conceptMapping.get(t) === null);
 
     if (unmappedNodes.length > 0) {
@@ -416,7 +416,7 @@ async function main() {
     // ── Insert mark scheme levels ─────────────────────────────────────────────
     console.log('\nInserting mark scheme levels...');
 
-    for (const [qNum, levels] of msByQNum) {
+    for (const [qNum, levels] of Array.from(msByQNum)) {
       const questionId = qNumToId.get(qNum);
       if (!questionId) throw new Error(`No inserted question ID for Q# "${qNum}"`);
 

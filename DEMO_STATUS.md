@@ -1,6 +1,6 @@
 # DEMO_STATUS.md
 
-Last updated: 2026-04-27
+Last updated: 2026-04-27 (session 4 — marker upgrade)
 
 ---
 
@@ -15,6 +15,11 @@ Last updated: 2026-04-27
   - L1–L3 MCQ: 261 questions (recall, understand, apply)
   - L4–L5 extended response: 21 questions (analyse, evaluate)
 - Essay marking via `/api/mark/extended`: working — synchronous, single-pass for L4, dual-pass with arbitration for L5
+  - Model: claude-sonnet-4-6, temperature 0, max_tokens 1500
+  - Rate limiting: 50 essay marks/day per user (enforced via `marking_rate_limits`)
+  - Full audit trail written on every call (`marking_audit_log`: raw request, raw response, latency, cost estimate)
+  - Progressive enrichment prompt: uses model_answer, examiner_notes, command_word, technique, levels-based rubric when available; backfilled questions (sparse fields) tolerated on same code path
+  - Structured response returned: band, score, bloom_demonstrated, gaps, mark_points_awarded, mark_points_missed, feedback
 - Progress dashboard: course progress ring, unit mastery bars (RAG-banded), Bloom depth profile, exam countdown
 - Topic drill-down: per-topic Bloom breakdown, gap flags, prerequisite links
 - Knowledge graph: Cytoscape.js visualisation, nodes coloured by mastery
@@ -33,11 +38,9 @@ Last updated: 2026-04-27
 
 ## What's not yet wired up
 
-- `/api/mark/extended` not yet using new schema fields — `model_answer`, `examiner_notes`, `command_word`, `essay_mark_scheme_levels` levels are in the DB but the marking prompt still reads only from legacy `marking_prompt` JSONB
-- `distinguishes_this_level` empty on all 84 backfilled rows — legacy JSONB had no equivalent field; to be populated via xlsx import or manual edit
-- `ao` and `wjec_tier` null on all 21 backfilled questions — same reason; populated via xlsx import only
-- `marking_audit_log` not yet written to by the marking endpoint
-- `marking_rate_limits` table created but no enforcement logic in the API
+- Session UI (`app/session/new/page.tsx`) only handles MCQ — no essay submission flow yet; `/api/mark/extended` is ready but has no client caller
+- `distinguishes_this_level` empty on all 84 backfilled rows — legacy JSONB had no equivalent field; populated via xlsx import or manual edit
+- `ao` and `wjec_tier` null on all 21 backfilled questions — same cause; populated via xlsx import only
 - Motion xlsx awaiting A-Level course infrastructure
 - Topic-node mapping system stub created (`data/topic-node-mappings.json`); WJEC-GCSE-PHY-DA section present but unpopulated — values to be filled in by hand against `data/wjec-gcse-physics-concepts.txt`
 - `concept_id` will be null on xlsx-imported questions until topic-node mapping is populated and a re-import is run
@@ -46,7 +49,6 @@ Last updated: 2026-04-27
 
 ## Planned next
 
-- Session 4: upgrade `/api/mark/extended` to use richer marking inputs (model answer, examiner notes, levels-based rubric from `essay_mark_scheme_levels`)
 - Session 5: manual calibration of marker on existing 21 essay questions
 - Session 6: author additional GCSE L4/L5 essay content for thin topics
 - Future: A-Level Physics infrastructure (course, units, knowledge graph nodes), Motion xlsx import as seed content
@@ -55,6 +57,6 @@ Last updated: 2026-04-27
 
 ## Current issues to address
 
-- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; marker upgrade (session 4) should handle gracefully
-- 21 backfilled questions have `ao` and `wjec_tier` as NULL — same cause; no impact on current marking flow
-- `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA) but the table has no permissive RLS policy — accessible via service_role only; no application writes yet
+- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; prompt skips it gracefully via progressive enrichment
+- 21 backfilled questions have `ao` and `wjec_tier` as NULL — same cause; prompt skips gracefully
+- `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA); no permissive RLS policy — writes use service_role client
