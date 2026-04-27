@@ -38,3 +38,4 @@ next-env.d.ts
 # MD reference files (not part of source)
 *.md
 !README.md
+!CLAUDE.md
