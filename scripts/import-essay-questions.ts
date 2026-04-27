@@ -5,28 +5,47 @@
 //   npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx>
 //   npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx> --dry-run
 //   npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx> --replace "Motion — Newton's Laws"
+//   npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx> --course-key=WJEC-GCSE-PHY-DA
 //
 // Sheet names expected (exact, including en-dash in first sheet):
-//   "L4–L5 Q&A Bank"    row 1 = title, row 2 = headers, row 3+ = data
-//   "Technique Guide"   row 1 = title, row 2 = headers, row 3+ = data
+//   "L4–L5 Q&A Bank"     row 1 = title, row 2 = headers, row 3+ = data
+//   "Technique Guide"    row 1 = title, row 2 = headers, row 3+ = data
 //   "Mark Scheme Detail" row 1 = title, row 2 = headers, row 3+ = data
+//
+// Concept mapping:
+//   data/topic-node-mappings.json maps xlsx topic_node strings → concept_uri.
+//   Select which course section to use with --course-key (default: WJEC-GCSE-PHY-DA).
+//   Unmapped topic nodes produce a warning but do not fail the import.
 
 import * as XLSX from 'xlsx';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
 
 // ── Arg parsing ─────────────────────────────────────────────────────────────
 
+function getArg(flag: string): string | null {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith(`${flag}=`)) return argv[i].slice(flag.length + 1);
+    if (argv[i] === flag && argv[i + 1] !== undefined) return argv[i + 1];
+  }
+  return null;
+}
+
 const argv = process.argv.slice(2);
-const DRY_RUN = argv.includes('--dry-run');
-const replaceIdx = argv.indexOf('--replace');
+const DRY_RUN     = argv.includes('--dry-run');
+const replaceIdx  = argv.indexOf('--replace');
 const REPLACE_TOPIC: string | null = replaceIdx !== -1 ? (argv[replaceIdx + 1] ?? null) : null;
-const XLSX_PATH = argv.find(a => !a.startsWith('--') && a !== REPLACE_TOPIC) ?? null;
+const COURSE_KEY  = getArg('--course-key') ?? 'WJEC-GCSE-PHY-DA';
+const XLSX_PATH   = argv.find(a =>
+  !a.startsWith('--') && a !== REPLACE_TOPIC && !a.startsWith('--course-key')
+) ?? null;
 
 if (!XLSX_PATH) {
   console.error(
-    'Usage: npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx> [--dry-run] [--replace <topic_node>]'
+    'Usage: npx tsx --env-file=.env.local scripts/import-essay-questions.ts <path-to-xlsx>\n' +
+    '       [--dry-run] [--replace <topic_node>] [--course-key=<key>]'
   );
   process.exit(1);
 }
@@ -70,7 +89,52 @@ interface ParsedMarkSchemeLevel {
   ai_confidence_flag: string | null;
 }
 
-// ── Sheet helpers ────────────────────────────────────────────────────────────
+// ── Concept mapping ──────────────────────────────────────────────────────────
+
+function loadConceptMapping(courseKey: string): Map<string, string | null> {
+  const mappingPath = path.join(process.cwd(), 'data', 'topic-node-mappings.json');
+  if (!fs.existsSync(mappingPath)) {
+    console.warn(`Warning: ${mappingPath} not found — all questions will have concept_id = null`);
+    return new Map();
+  }
+
+  const raw = JSON.parse(fs.readFileSync(mappingPath, 'utf-8')) as Record<string, Record<string, string | null>>;
+  const section = raw[courseKey];
+  if (!section) {
+    console.warn(`Warning: course key "${courseKey}" not found in topic-node-mappings.json — concept_id will be null for all questions`);
+    return new Map();
+  }
+
+  const map = new Map<string, string | null>();
+  for (const [topicNode, conceptUri] of Object.entries(section)) {
+    // Skip meta keys (NOTE, _examples_of_format)
+    if (topicNode.startsWith('NOTE') || topicNode.startsWith('_')) continue;
+    // Treat empty string, 'null', and TODO-like values as unmapped
+    const value = conceptUri === null || conceptUri === '' || /^(null|todo|TODO)/.test(conceptUri ?? '')
+      ? null
+      : conceptUri;
+    map.set(topicNode, value);
+  }
+  return map;
+}
+
+async function resolveConceptIds(
+  supabase: SupabaseClient,
+  conceptUris: string[]
+): Promise<Map<string, string>> {
+  if (conceptUris.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('knowledge_graph_nodes')
+    .select('id, concept_uri')
+    .in('concept_uri', conceptUris);
+
+  if (error) throw new Error(`Failed to look up concept URIs: ${error.message}`);
+
+  return new Map((data ?? []).map(row => [row.concept_uri as string, row.id as string]));
+}
+
+// ── Sheet parsing ────────────────────────────────────────────────────────────
 
 function parseSheetToObjects(wb: XLSX.WorkBook, sheetName: string): Record<string, unknown>[] {
   const sheet = wb.Sheets[sheetName];
@@ -133,11 +197,10 @@ async function main() {
   const startTime = Date.now();
   const resolvedPath = path.resolve(XLSX_PATH!);
 
-  if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`File not found: ${resolvedPath}`);
-  }
+  if (!fs.existsSync(resolvedPath)) throw new Error(`File not found: ${resolvedPath}`);
 
   console.log(`\nOpening: ${resolvedPath}`);
+  console.log(`Course key: ${COURSE_KEY}`);
   if (DRY_RUN) console.log('DRY RUN — no changes will be written to the database');
   if (REPLACE_TOPIC) console.log(`--replace: will delete existing questions for topic_node="${REPLACE_TOPIC}"`);
 
@@ -186,14 +249,14 @@ async function main() {
     ai_confidence_flag:       str(row['AI Confidence Flag']),
   }));
 
-  // Group mark scheme levels by Q# and assign level_order by row position
+  // Group mark scheme levels by Q# (level_order = row position within Q#)
   const msByQNum = new Map<string, ParsedMarkSchemeLevel[]>();
   for (const ms of markSchemeLevels) {
     if (!msByQNum.has(ms.q_num)) msByQNum.set(ms.q_num, []);
     msByQNum.get(ms.q_num)!.push(ms);
   }
 
-  // Validate all Q# in Mark Scheme Detail exist in Q&A Bank
+  // Validate Q# cross-references
   const qNums = new Set(questions.map(q => q.q_num));
   for (const qNum of msByQNum.keys()) {
     if (!qNums.has(qNum)) {
@@ -201,19 +264,42 @@ async function main() {
     }
   }
 
-  console.log('\nParsed from xlsx:');
+  // ── Load concept mapping ──────────────────────────────────────────────────
+  const conceptMapping = loadConceptMapping(COURSE_KEY);
+
+  // Resolve topic_node → concept_uri → concept_id
+  // Collect all distinct concept_uris that have a non-null mapping
+  const distinctUris = Array.from(
+    new Set(
+      questions
+        .map(q => conceptMapping.get(q.topic_node) ?? null)
+        .filter((uri): uri is string => uri !== null)
+    )
+  );
+
+  console.log(`\nParsed from xlsx:`);
   console.log(`  Techniques:           ${techniques.length}`);
   console.log(`  Questions:            ${questions.length}`);
   console.log(`  Mark scheme levels:   ${markSchemeLevels.length}`);
+  console.log(`  Distinct topic nodes: ${new Set(questions.map(q => q.topic_node)).size}`);
+  console.log(`  Mapped concept URIs:  ${distinctUris.length}`);
 
   if (DRY_RUN) {
-    console.log('\n✓ Dry run complete — no changes written.');
+    // Report mapping status without hitting the DB
+    const unmappedNodes = [...new Set(questions.map(q => q.topic_node))]
+      .filter(t => !conceptMapping.has(t) || conceptMapping.get(t) === null);
+
+    if (unmappedNodes.length > 0) {
+      console.log(`\nWarning — unmapped topic nodes (concept_id will be null):`);
+      unmappedNodes.forEach(t => console.log(`  "${t}"`));
+    }
+    console.log(`\n✓ Dry run complete — no changes written.`);
     return;
   }
 
   // ── Connect (service role — bypasses RLS for admin import) ────────────────
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
     throw new Error(
       'Missing env vars. Run with: npx tsx --env-file=.env.local scripts/import-essay-questions.ts ...'
@@ -223,9 +309,37 @@ async function main() {
     auth: { persistSession: false },
   });
 
+  // Resolve concept URIs to UUIDs in one batch query
+  const uriToId = await resolveConceptIds(supabase, distinctUris);
+
+  // Build topic_node → concept_id map, tracking unmapped nodes
+  const unmappedTopicNodes: string[] = [];
+  const topicNodeToConceptId = new Map<string, string | null>();
+
+  for (const q of questions) {
+    if (topicNodeToConceptId.has(q.topic_node)) continue;
+    const uri = conceptMapping.get(q.topic_node) ?? null;
+    if (uri === null) {
+      topicNodeToConceptId.set(q.topic_node, null);
+      if (!unmappedTopicNodes.includes(q.topic_node)) unmappedTopicNodes.push(q.topic_node);
+    } else {
+      const id = uriToId.get(uri) ?? null;
+      if (id === null && !unmappedTopicNodes.includes(q.topic_node)) {
+        console.warn(`  Warning: concept_uri "${uri}" not found in knowledge_graph_nodes — concept_id will be null for topic "${q.topic_node}"`);
+        unmappedTopicNodes.push(q.topic_node);
+      }
+      topicNodeToConceptId.set(q.topic_node, id);
+    }
+  }
+
+  if (unmappedTopicNodes.length > 0) {
+    console.log(`\nWarning — unmapped topic nodes (concept_id will be null):`);
+    unmappedTopicNodes.forEach(t => console.log(`  "${t}"`));
+  }
+
   // Track inserted IDs for compensating rollback
   const insertedQuestionIds: string[] = [];
-  const insertedLevelIds: string[] = [];
+  const insertedLevelIds: string[]    = [];
 
   try {
     // ── --replace: remove existing questions for this topic_node ─────────────
@@ -286,7 +400,7 @@ async function main() {
           exam_board:          'WJEC',
           options:             [],
           correct_idx:         0,
-          concept_id:          null,
+          concept_id:          topicNodeToConceptId.get(q.topic_node) ?? null,
           question_version:    'v1',
         })
         .select('id')
@@ -331,7 +445,7 @@ async function main() {
     console.log(` ${insertedLevelIds.length} inserted.`);
 
   } catch (err) {
-    // Compensating rollback: delete everything inserted in this run
+    // Compensating rollback
     console.error(`\n\nError: ${(err as Error).message}`);
     console.log('Rolling back inserted rows...');
 
@@ -356,14 +470,24 @@ async function main() {
     process.exit(1);
   }
 
+  const linkedCount  = insertedQuestionIds.length - unmappedTopicNodes.reduce(
+    (n, t) => n + questions.filter(q => q.topic_node === t).length, 0
+  );
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log('\n─────────────────────────────────────────');
+
+  console.log('\n─────────────────────────────────────────────────────────');
   console.log('Import complete');
   console.log(`  Techniques upserted:      ${techniques.length}`);
   console.log(`  Questions inserted:       ${insertedQuestionIds.length}`);
   console.log(`  Mark scheme levels:       ${insertedLevelIds.length}`);
+  console.log(`  Linked to concept_id:     ${linkedCount} of ${insertedQuestionIds.length}`);
+  if (unmappedTopicNodes.length > 0) {
+    console.log(`  Unmapped topic nodes:     ${unmappedTopicNodes.join(', ')}`);
+  } else {
+    console.log(`  Unmapped topic nodes:     none`);
+  }
   console.log(`  Time taken:               ${elapsed}s`);
-  console.log('─────────────────────────────────────────');
+  console.log('─────────────────────────────────────────────────────────');
 }
 
 main().catch(err => {

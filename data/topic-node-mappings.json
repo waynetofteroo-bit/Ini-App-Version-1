@@ -1,0 +1,12 @@
+{
+  "WJEC-GCSE-PHY-DA": {
+    "NOTE": "Fill in the values below using data/wjec-gcse-physics-concepts.txt as your reference. Keys are the exact topic_node strings from the xlsx. Values are concept_uri strings from knowledge_graph_nodes. Set a value to null to leave that topic unmapped (import will warn but continue).",
+
+    "_examples_of_format": {
+      "Speed, Velocity and Acceleration": "wjec:physics:forces-motion:speed-velocity",
+      "Newton's Laws of Motion":          "wjec:physics:forces-motion:newtons-laws"
+    },
+
+    "your-topic-node-here": null
+  }
+}

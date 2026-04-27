@@ -1,0 +1,52 @@
+WJEC GCSE Physics Double Award — Knowledge Graph Nodes
+Course code: WJEC-GCSE-PHY-DA
+Generated: 2026-04-27
+Use this file to fill in data/topic-node-mappings.json.
+Format: concept_uri | label | bloom_ceiling | topic_tier
+================================================================
+
+UNIT 1 — Electricity
+  wjec:physics:electricity:charge-current          | Electric Charge and Current         | 3 | core
+  wjec:physics:electricity:potential-difference    | Potential Difference and EMF        | 4 | core
+  wjec:physics:electricity:resistance              | Resistance and Ohms Law             | 4 | core
+  wjec:physics:electricity:series-parallel         | Series and Parallel Circuits        | 4 | core
+  wjec:physics:electricity:electrical-power        | Electrical Power and Energy         | 4 | core
+  wjec:physics:electricity:domestic-electricity    | Domestic Electricity and Safety     | 4 | higher
+
+UNIT 2 — Forces and Motion
+  wjec:physics:forces-motion:speed-velocity        | Speed, Velocity and Acceleration    | 3 | core
+  wjec:physics:forces-motion:distance-time-graphs  | Distance-Time and Velocity-Time Graphs | 4 | core
+  wjec:physics:forces-motion:newtons-laws          | Newtons Laws of Motion              | 4 | core
+  wjec:physics:forces-motion:momentum              | Momentum and Impulse                | 4 | higher
+  wjec:physics:forces-motion:work-energy           | Work Done and Kinetic Energy        | 4 | core
+  wjec:physics:forces-motion:stopping-distances    | Stopping Distances and Safety       | 4 | core
+
+UNIT 3 — Waves
+  wjec:physics:waves:wave-properties               | Wave Properties and Equations       | 3 | core
+  wjec:physics:waves:transverse-longitudinal       | Transverse and Longitudinal Waves   | 3 | core
+  wjec:physics:waves:reflection-refraction         | Reflection and Refraction           | 4 | core
+  wjec:physics:waves:electromagnetic-spectrum      | The Electromagnetic Spectrum        | 4 | core
+  wjec:physics:waves:sound-waves                   | Sound Waves and Hearing             | 3 | core
+  wjec:physics:waves:seismic-waves                 | Seismic Waves and Earth Structure   | 4 | higher
+
+UNIT 4 — Energy
+  wjec:physics:energy:energy-stores-transfers      | Energy Stores and Transfers         | 3 | core
+  wjec:physics:energy:conservation-of-energy       | Conservation of Energy              | 4 | core
+  wjec:physics:energy:efficiency                   | Efficiency and Energy Waste         | 4 | core
+  wjec:physics:energy:renewable-resources          | Renewable Energy Resources          | 4 | core
+  wjec:physics:energy:non-renewable-resources      | Non-Renewable Energy Resources      | 4 | core
+  wjec:physics:energy:thermal-transfer             | Thermal Energy Transfer             | 4 | higher
+
+UNIT 5 — The Universe
+  wjec:physics:universe:solar-system               | Our Solar System                    | 3 | core
+  wjec:physics:universe:stars-lifecycle            | Life Cycle of Stars                 | 4 | core
+  wjec:physics:universe:gravity-orbits             | Gravity and Orbits                  | 4 | core
+  wjec:physics:universe:big-bang                   | The Big Bang Theory                 | 4 | core
+  wjec:physics:universe:red-shift                  | Red-Shift and Expanding Universe    | 5 | higher
+
+UNIT 6 — Particles
+  wjec:physics:particles:atomic-structure          | Atomic Structure                    | 3 | core
+  wjec:physics:particles:radioactive-decay         | Radioactive Decay and Half-Life     | 4 | core
+  wjec:physics:particles:nuclear-radiation         | Types of Nuclear Radiation          | 3 | core
+  wjec:physics:particles:nuclear-fission-fusion    | Nuclear Fission and Fusion          | 5 | higher
+  wjec:physics:particles:uses-of-radiation         | Uses and Hazards of Radiation       | 4 | core
