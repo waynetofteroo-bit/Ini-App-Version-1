@@ -1,11 +1,10 @@
-BEGIN;
-
 -- Backfill questions.marks from essay_mark_scheme_levels for all essay
 -- questions where marks is still null. Reads the level_order=1 row's
 -- mark_range ("N/M") and sets marks = M.
 --
 -- Idempotent: skips rows where marks is already non-null.
 -- Reports counts and any skipped questions via RAISE NOTICE (Messages tab).
+-- Note: no BEGIN/COMMIT wrapper — DO blocks are implicitly transactional.
 
 DO $$
 DECLARE
@@ -51,11 +50,9 @@ BEGIN
   RAISE NOTICE '-------------------------------------------';
   RAISE NOTICE 'questions.marks backfilled : %', updated;
   IF array_length(skipped, 1) IS NOT NULL THEN
-    RAISE NOTICE 'Skipped (% rows):%', array_length(skipped, 1), E'\n' || array_to_string(skipped, E'\n');
+    RAISE NOTICE 'Skipped (% rows): %', array_length(skipped, 1), array_to_string(skipped, ', ');
   ELSE
     RAISE NOTICE 'Skipped                    : 0';
   END IF;
   RAISE NOTICE '-------------------------------------------';
 END $$;
-
-COMMIT;
