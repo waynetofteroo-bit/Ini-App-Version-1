@@ -1,6 +1,6 @@
 # DEMO_STATUS.md
 
-Last updated: 2026-04-27 (session 4.5 — marker cleanup)
+Last updated: 2026-04-28 (session 5 — essay question UI)
 
 ---
 
@@ -41,7 +41,11 @@ Last updated: 2026-04-27 (session 4.5 — marker cleanup)
 
 ## What's not yet wired up
 
-- Session UI (`app/session/new/page.tsx`) only handles MCQ — no essay submission flow yet; `/api/mark/extended` is ready but has no client caller
+- Essay question UI live (session 5): free-text textarea, submission confirmation modal, marking-in-progress state with animated dots and rotating messages, structured feedback panel (score banner, mark points awarded/missed, feedback paragraph, gaps, conditional model answer reveal on Partial/Minimal band), retry flow, re-mark request (writes `marking_status = 'under_review'` + note to `answer_log` via `/api/mark/remark`)
+- Mixed session support: session page detects `bloom_level >= 4` and renders `EssayCard` instead of `QuestionCard`; MCQ and essay questions can appear in the same session queue
+- Re-mark requests written to `answer_log.marking_status = 'under_review'` — no admin reviewer UI yet; review via Supabase dashboard
+- Conditional model answer reveal: only shown when band is Partial or Minimal AND `model_answer` is non-null (all 21 backfilled questions have `model_answer = null` — will populate via future xlsx import)
+- Mobile-responsive textarea: auto-grow, min 6 rows, max 20 rows desktop / max 10 rows mobile
 - `distinguishes_this_level` empty on all 84 backfilled rows — legacy JSONB had no equivalent field; populated via xlsx import or manual edit
 - `ao` and `wjec_tier` null on all 21 backfilled questions — same cause; populated via xlsx import only
 - Motion xlsx awaiting A-Level course infrastructure
@@ -64,4 +68,5 @@ Last updated: 2026-04-27 (session 4.5 — marker cleanup)
 - 21 backfilled questions have `ao` and `wjec_tier` as NULL — same cause; prompt skips gracefully
 - `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA); no permissive RLS policy — writes use service_role client
 - Rate limit upsert has a theoretical race condition on two simultaneous first-ever requests from the same user — not a practical issue at current scale; parked for future hardening
+- Essay attempts do NOT update the SM-2 queue — the marking endpoint has no SM-2 logic, so essay questions remain "due" after an attempt and will reappear in future sessions. Correct behaviour for essays (retry semantics differ from MCQ) but needs a dedicated spaced-repetition strategy; deferred to a future session focused on essay-specific SM-2 semantics
 - `marking_prompt` JSONB column retained in DB and in type definitions but no longer read by the marker — to be dropped in a future migration once data is confirmed fully migrated

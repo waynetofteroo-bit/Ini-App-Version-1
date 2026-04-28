@@ -258,9 +258,9 @@ export async function POST(request: Request) {
     score:               markingResult!.score,
     bloom_demonstrated:  markingResult!.bloom_demonstrated,
     gaps:                markingResult!.gaps,
-    // New fields — existing clients that ignore these won't break
     mark_points_awarded: markingResult!.mark_points_awarded,
     mark_points_missed:  markingResult!.mark_points_missed,
     feedback:            markingResult!.feedback,
+    answer_log_id:       answerLogRow?.id ?? null,
   });
 }

@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { QuestionCard } from '@/components/QuestionCard';
+import { EssayCard } from '@/components/EssayCard';
 import { BackButton } from '@/components/BackButton';
 
 interface Question {
@@ -13,6 +14,10 @@ interface Question {
   correct_idx: number;
   bloom_level: number;
   topicLabel: string;
+  // Essay-specific fields (null on MCQ questions)
+  marks: number | null;
+  command_word: string | null;
+  model_answer: string | null;
 }
 
 const SESSION_KEY = 'ini_session_answered';
@@ -21,40 +26,47 @@ function SessionContent() {
   const params = useSearchParams();
   const router = useRouter();
 
-  const courseId = params.get('course');
-  const unitId = params.get('unit_id');
-  const topicId = params.get('topic_id');
-  const force = params.get('force');
+  const courseId  = params.get('course');
+  const unitId    = params.get('unit_id');
+  const topicId   = params.get('topic_id');
+  const force     = params.get('force');
   const backParam = params.get('back') ?? '/dashboard';
 
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [index, setIndex] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [startMs, setStartMs] = useState(Date.now());
+  const [index, setIndex]         = useState(0);
+  const [selected, setSelected]   = useState<number | null>(null);
+  const [revealed, setRevealed]   = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [startMs, setStartMs]     = useState(Date.now());
 
   useEffect(() => {
     const qs = new URLSearchParams();
     if (courseId) qs.set('course', courseId);
-    if (unitId) qs.set('unit_id', unitId);
-    if (topicId) qs.set('topic_id', topicId);
-    if (force) qs.set('force', force);
+    if (unitId)   qs.set('unit_id', unitId);
+    if (topicId)  qs.set('topic_id', topicId);
+    if (force)    qs.set('force', force);
 
     fetch(`/api/session/queue?${qs}`)
-      .then((r) => r.json())
+      .then(r => r.json())
       .then((data: Question[]) => {
-        // Resume from sessionStorage
         const answered: string[] = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '[]');
-        const remaining = data.filter((q) => !answered.includes(q.id));
+        const remaining = data.filter(q => !answered.includes(q.id));
         setQuestions(remaining);
         setLoading(false);
         setStartMs(Date.now());
       });
-  }, [courseId, unitId, topicId]);
+  }, [courseId, unitId, topicId, force]);
 
   const handleSelect = useCallback((idx: number) => {
     setSelected(idx);
+  }, []);
+
+  // Records a question as attempted in sessionStorage
+  const handleAttempted = useCallback((questionId: string) => {
+    const answered: string[] = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '[]');
+    if (!answered.includes(questionId)) {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify([...answered, questionId]));
+    }
   }, []);
 
   async function handleConfirm() {
@@ -65,19 +77,17 @@ function SessionContent() {
 
     setRevealed(true);
 
-    // Save to sessionStorage
-    const answered: string[] = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '[]');
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify([...answered, q.id]));
+    // Record MCQ attempt to sessionStorage (matches essay: both record on submit)
+    handleAttempted(q.id);
 
-    // Submit answer
     await fetch('/api/session/answer', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question_id: q.id,
-        answer_idx: selected,
+      body:    JSON.stringify({
+        question_id:    q.id,
+        answer_idx:     selected,
         correct,
-        response_ms: responseMs,
+        response_ms:    responseMs,
         user_course_id: courseId,
       }),
     });
@@ -88,7 +98,7 @@ function SessionContent() {
       sessionStorage.removeItem(SESSION_KEY);
       router.push(`/session/summary?back=${encodeURIComponent(backParam)}`);
     } else {
-      setIndex((i) => i + 1);
+      setIndex(i => i + 1);
       setSelected(null);
       setRevealed(false);
       setStartMs(Date.now());
@@ -113,6 +123,7 @@ function SessionContent() {
   }
 
   const q = questions[index];
+  const isEssay = q.bloom_level >= 4;
 
   return (
     <main className="min-h-screen px-4 py-8">
@@ -131,32 +142,43 @@ function SessionContent() {
           />
         </div>
 
-        <QuestionCard
-          stem={q.stem}
-          options={q.options}
-          bloomLevel={q.bloom_level}
-          topicLabel={q.topicLabel}
-          selectedIdx={selected}
-          correctIdx={q.correct_idx}
-          revealed={revealed}
-          onSelect={handleSelect}
-        />
-
-        {!revealed ? (
-          <button
-            onClick={handleConfirm}
-            disabled={selected === null}
-            className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
-          >
-            Check answer
-          </button>
+        {isEssay ? (
+          <EssayCard
+            question={q}
+            courseId={courseId ?? ''}
+            onNext={handleNext}
+            onAttempted={handleAttempted}
+          />
         ) : (
-          <button
-            onClick={handleNext}
-            className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
-          >
-            {index + 1 >= questions.length ? 'Finish session' : 'Next →'}
-          </button>
+          <>
+            <QuestionCard
+              stem={q.stem}
+              options={q.options}
+              bloomLevel={q.bloom_level}
+              topicLabel={q.topicLabel}
+              selectedIdx={selected}
+              correctIdx={q.correct_idx}
+              revealed={revealed}
+              onSelect={handleSelect}
+            />
+
+            {!revealed ? (
+              <button
+                onClick={handleConfirm}
+                disabled={selected === null}
+                className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                Check answer
+              </button>
+            ) : (
+              <button
+                onClick={handleNext}
+                className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
+              >
+                {index + 1 >= questions.length ? 'Finish session' : 'Next →'}
+              </button>
+            )}
+          </>
         )}
       </div>
     </main>

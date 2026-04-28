@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
   const { data: questions } = await supabase
     .from('questions')
-    .select('id, concept_id, stem, options, correct_idx, bloom_level, marking_prompt, exam_board')
+    .select('id, concept_id, stem, options, correct_idx, bloom_level, marking_prompt, exam_board, marks, command_word, model_answer')
     .in('concept_id', conceptIds)
     .order('bloom_level');
 
