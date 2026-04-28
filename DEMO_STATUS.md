@@ -14,7 +14,11 @@ Last updated: 2026-04-28 (session 5 — essay question UI)
 - Question bank: 282 questions across 34 topics, 6 units
   - L1–L3 MCQ: 261 questions (recall, understand, apply)
   - L4–L5 extended response: 21 questions (analyse, evaluate)
-- Essay marking via `/api/mark/extended`: working — synchronous, single-pass for L4, dual-pass with arbitration for L5
+- Essay marking via `/api/mark/extended`: working — synchronous
+  - L4 (Analyse): single Claude call per attempt. Typical cost ~$0.006–0.007 per mark.
+  - L5 (Evaluate/Create): dual-pass — two independent Claude calls per attempt. Arbitration rule: if the two passes return different bands, the **lower band wins** (conservative); gaps and missed mark points are merged as a deduplicated union. Typical cost ~$0.013–0.015 per mark.
+  - Blended average across a typical L4/L5 mix: ~$0.008 per marking call.
+  - Canonical design reference: see `CONVENTIONS.md` → "Bloom's taxonomy levels" section.
   - Model: claude-sonnet-4-6, temperature 0, max_tokens 1500
   - Rate limiting: 50 essay marks/day per user (enforced via `marking_rate_limits`)
   - Full audit trail written on every call (`marking_audit_log`: raw request, raw response, latency, cost estimate)
