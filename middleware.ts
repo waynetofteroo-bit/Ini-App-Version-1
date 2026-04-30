@@ -6,6 +6,7 @@ const PROTECTED = [
   '/dashboard',
   '/session',
   '/progress',
+  '/unit',
   '/courses',
   '/onboarding/add',
   '/curriculum',

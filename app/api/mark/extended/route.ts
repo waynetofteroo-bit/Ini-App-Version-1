@@ -7,6 +7,9 @@ import {
   type MarkingLevel,
   type MarkingTechnique,
 } from '@/lib/marking/build-prompt';
+import { LADDER_CONFIG } from '@/lib/ladder/config';
+import { getAvailableRungs } from '@/lib/ladder/availability';
+import { getOrInitState, evaluateThreshold, advanceRung } from '@/lib/ladder/state-engine';
 
 const DAILY_MARKING_LIMIT = 50;
 
@@ -66,11 +69,13 @@ export async function POST(request: Request) {
 
   // 2. Parse body
   const body = await request.json() as Record<string, unknown>;
-  const { question_id, student_response, bloom_target, user_course_id } = body as {
-    question_id: string;
+  const { question_id, student_response, bloom_target, user_course_id, session_mode, unit_id } = body as {
+    question_id:    string;
     student_response: string;
-    bloom_target: number;
+    bloom_target:   number;
     user_course_id: string;
+    session_mode?:  string;
+    unit_id?:       string;
   };
 
   if (!question_id || !student_response || !user_course_id) {
@@ -189,8 +194,12 @@ export async function POST(request: Request) {
   }
 
   // 7. Write answer_log (always — even on failure, to record the attempt)
+  // Ladder essays use essayPassThreshold (default 60%); all other essays use 50%.
+  const passMark = session_mode === 'ladder'
+    ? Math.round(maxMarks * LADDER_CONFIG.essayPassThreshold)
+    : Math.ceil(maxMarks / 2);
   const correct = !markingFailed && markingResult != null
-    ? markingResult.score >= Math.ceil(maxMarks / 2)
+    ? markingResult.score >= passMark
     : false;
 
   const { data: answerLogRow } = await supabase
@@ -208,6 +217,7 @@ export async function POST(request: Request) {
       marked_at:              new Date().toISOString(),
       bloom_demonstrated:     markingResult?.bloom_demonstrated ?? null,
       gaps:                   markingResult?.gaps ?? [],
+      session_mode:           session_mode ?? null,
     })
     .select('id')
     .single();
@@ -244,7 +254,29 @@ export async function POST(request: Request) {
       { onConflict: 'user_id,date' }
     );
 
-  // 10. Return
+  // 10. Ladder advancement for essay attempts (ladder-mode only)
+  let ladderResult: Record<string, unknown> | null = null;
+  if (session_mode === 'ladder' && unit_id && !markingFailed) {
+    const availableRungs = await getAvailableRungs(unit_id, supabase);
+    const state = await getOrInitState(user.id, unit_id, availableRungs, supabase);
+    const threshold = await evaluateThreshold(user.id, unit_id, user_course_id, state.currentRung, supabase);
+
+    let advancement = null;
+    if (threshold.passed && !state.reachedTop) {
+      advancement = await advanceRung(user.id, unit_id, state.currentRung, availableRungs, supabase);
+    }
+
+    ladderResult = {
+      rung_advanced: threshold.passed,
+      new_rung:      advancement?.newRung ?? null,
+      reached_top:   advancement?.reachedTop ?? false,
+      is_stalled:    threshold.isStalled,
+      attempts:      threshold.attempts,
+      correct_count: threshold.correctCount,
+    };
+  }
+
+  // 11. Return
   if (markingFailed) {
     return NextResponse.json(
       { error: `Marking failed: ${markingError}. Your attempt has been recorded.` },
@@ -252,7 +284,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Backwards-compatible response: original fields + new fields
   return NextResponse.json({
     band:                markingResult!.band,
     score:               markingResult!.score,
@@ -262,5 +293,6 @@ export async function POST(request: Request) {
     mark_points_missed:  markingResult!.mark_points_missed,
     feedback:            markingResult!.feedback,
     answer_log_id:       answerLogRow?.id ?? null,
+    ...(ladderResult ? { ladder: ladderResult } : {}),
   });
 }

@@ -67,7 +67,7 @@ export function UnitAccordion({ units, courseId, currentPath }: UnitAccordionPro
             </div>
           </button>
           {open === unit.unitId && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
               <div className="flex flex-wrap gap-2">
                 {unit.topics.map((topic) => {
                   const dest = `/progress/topic/${topic.id}?back=${encodeURIComponent(currentPath)}`;
@@ -82,6 +82,12 @@ export function UnitAccordion({ units, courseId, currentPath }: UnitAccordionPro
                   );
                 })}
               </div>
+              <Link
+                href={`/unit/${unit.unitId}?course=${courseId}&back=${encodeURIComponent(currentPath)}`}
+                className="inline-block text-xs text-indigo-600 font-medium hover:underline"
+              >
+                Study this unit →
+              </Link>
             </div>
           )}
         </div>

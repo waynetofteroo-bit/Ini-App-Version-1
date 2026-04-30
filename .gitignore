@@ -8,6 +8,11 @@
 
 # testing
 /coverage
+/test-results/
+.env.e2e
+
+# supabase local temp
+/supabase/.temp/
 
 # next.js
 /.next/

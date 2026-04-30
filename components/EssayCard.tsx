@@ -22,6 +22,16 @@ interface MarkingResponse {
   mark_points_missed: string[];
   feedback: string;
   answer_log_id: string | null;
+  ladder?: LadderResult;
+}
+
+interface LadderResult {
+  rung_advanced: boolean;
+  new_rung: number | null;
+  reached_top: boolean;
+  is_stalled: boolean;
+  attempts: number;
+  correct_count: number;
 }
 
 interface EssayCardProps {
@@ -29,6 +39,9 @@ interface EssayCardProps {
   courseId: string;
   onNext: () => void;
   onAttempted: (questionId: string) => void;
+  sessionMode?: string;
+  unitId?: string;
+  onLadderResult?: (result: LadderResult) => void;
 }
 
 type EssayState =
@@ -70,7 +83,7 @@ function countWords(text: string): number {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function EssayCard({ question, courseId, onNext, onAttempted }: EssayCardProps) {
+export function EssayCard({ question, courseId, onNext, onAttempted, sessionMode, unitId, onLadderResult }: EssayCardProps) {
   const [state, setState]         = useState<EssayState>('idle');
   const [response, setResponse]   = useState('');
   const [result, setResult]       = useState<MarkingResponse | null>(null);
@@ -144,6 +157,8 @@ export function EssayCard({ question, courseId, onNext, onAttempted }: EssayCard
           user_course_id:   courseId,
           student_response: response,
           bloom_target:     question.bloom_level,
+          ...(sessionMode ? { session_mode: sessionMode } : {}),
+          ...(unitId      ? { unit_id: unitId }           : {}),
         }),
       });
 
@@ -162,6 +177,7 @@ export function EssayCard({ question, courseId, onNext, onAttempted }: EssayCard
 
       setResult(data);
       setState('feedback');
+      if (data.ladder && onLadderResult) onLadderResult(data.ladder as LadderResult);
     } catch {
       setErrorMsg('Network error — please check your connection.');
       setState('failed');

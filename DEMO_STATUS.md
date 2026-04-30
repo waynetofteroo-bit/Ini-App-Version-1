@@ -1,6 +1,6 @@
 # DEMO_STATUS.md
 
-Last updated: 2026-04-28 (session 5 — essay question UI)
+Last updated: 2026-04-30 (session 6 — Bloom's ladder, iteration 1 complete)
 
 ---
 
@@ -8,25 +8,42 @@ Last updated: 2026-04-28 (session 5 — essay question UI)
 
 **WJEC GCSE Physics Double Award (course code: WJEC-GCSE-PHY-DA)**
 
+Three study modes are now live on each unit:
+
+- **SM-2 spaced repetition review** — course-scoped queue, blended retention + urgency scoring
+- **Focus session** — unit-filtered, force-load (bypasses due-date gate)
+- **Bloom's ladder** — iteration 1 complete per design proposal §1
+
+Ladder specifics:
+- Unit study hub at `/unit/[unitId]?course=[courseId]` — mode selection card for all three modes; accessible from unit accordion on the progress page via "Study this unit →"
+- Ladder session at `/session/ladder/[unitId]?course=[courseId]`
+- Variable-height ladder per unit — rungs are the Bloom's levels that have at least one question; derived at render time, not stored
+- Non-contiguous levels (e.g. L1, L3, L5) rendered as adjacent rungs; skip explanation shown only on the rung-passed transition screen
+- Persistent state in `ladder_state` (migration 017); self-heals if content is removed mid-climb
+- Pass threshold: 60% over last 5 ladder-mode attempts, minimum 3 before threshold fires
+- MCQ and essay answers both feed the threshold via `answer_log.session_mode = 'ladder'`
+- Rung advancement evaluated and written server-side in the answer handler — no client PATCH
+- Six screens: intro (one-time per browser, localStorage flag), question, rung-passed transition, rung-exhausted, stalled, reached-top
+- `ladder_state` row is created on first entry to the ladder session, not on unit hub view — so "not started" on the entry card means the student has never clicked into the session
+
+Content coverage report (per-unit Bloom's coverage, ladder shapes, authoring priorities): `docs/reports/ladder-coverage-2026-04.md`
+
+**Tunables in `lib/ladder/config.ts`** (change requires redeploy — see Known Limitations):
+
+| Key | Default | Effect |
+|---|---|---|
+| `passThreshold` | 0.60 | MCQ pass rate required to advance a rung |
+| `evaluationWindow` | 5 | Last N attempts evaluated for threshold |
+| `minimumAttemptsForEval` | 3 | Minimum attempts before threshold fires |
+| `recentAttemptExclusionHours` | 4 | Hours before a question recurs in a session |
+| `essayPassThreshold` | 0.60 | Essay score fraction (of max marks) that sets `answer_log.correct = true` for ladder essays; applied at write time in `/api/mark/extended` |
+
+**Other features**
+
 - Auth: sign-up, login, session via Supabase Auth
 - Onboarding: 5-step wizard (exam board → level → course → unit selection → confirm)
-- SM-2 spaced repetition queue: active, course-scoped, blended retention + urgency scoring
-- Question bank: 282 questions across 34 topics, 6 units
-  - L1–L3 MCQ: 261 questions (recall, understand, apply)
-  - L4–L5 extended response: 21 questions (analyse, evaluate)
-- Essay marking via `/api/mark/extended`: working — synchronous
-  - L4 (Analyse): single Claude call per attempt. Typical cost ~$0.006–0.007 per mark.
-  - L5 (Evaluate/Create): dual-pass — two independent Claude calls per attempt. Arbitration rule: if the two passes return different bands, the **lower band wins** (conservative); gaps and missed mark points are merged as a deduplicated union. Typical cost ~$0.013–0.015 per mark.
-  - Blended average across a typical L4/L5 mix: ~$0.008 per marking call.
-  - Canonical design reference: see `CONVENTIONS.md` → "Bloom's taxonomy levels" section.
-  - Model: claude-sonnet-4-6, temperature 0, max_tokens 1500
-  - Rate limiting: 50 essay marks/day per user (enforced via `marking_rate_limits`)
-  - Full audit trail written on every call (`marking_audit_log`: raw request, raw response, latency, cost estimate)
-  - Progressive enrichment prompt: uses model_answer, examiner_notes, command_word, technique, levels-based rubric when available; backfilled questions (sparse fields) tolerated on same code path
-  - Structured response returned: band, score, bloom_demonstrated, gaps, mark_points_awarded, mark_points_missed, feedback
-  - POST body now requires user_course_id (current session page does not yet send this — essay UI work in session 5 will address)
-- questions.marks backfilled (session 4.5, migration 016): all 21 essay questions now have explicit marks values derived from essay_mark_scheme_levels level_order=1 mark_range
-- Fallback logic removed from marker (session 4.5): resolveMaxMarks and resolveMarkPoints now throw explicitly on null — no silent JSONB fallback
+- Question bank: 282 questions across 34 topics, 6 units (L1–L3 MCQ: 261; L4–L5 extended response: 21)
+- Essay marking via `/api/mark/extended`: L4 single-pass (~$0.006–0.007), L5 dual-pass conservative arbitration (~$0.013–0.015); rate-limited at 50/day; full audit trail in `marking_audit_log`
 - Progress dashboard: course progress ring, unit mastery bars (RAG-banded), Bloom depth profile, exam countdown
 - Topic drill-down: per-topic Bloom breakdown, gap flags, prerequisite links
 - Knowledge graph: Cytoscape.js visualisation, nodes coloured by mastery
@@ -34,43 +51,71 @@ Last updated: 2026-04-28 (session 5 — essay question UI)
 
 ---
 
-## Schema state (as of migration 015)
+## Schema state (as of migration 017)
 
-- **Migration 001–013**: core schema (profiles, courses, units, knowledge graph, questions, user tables, SM-2 queue, answer log, progress rollup view, trigger, seed data)
-- **Migration 014**: essay question infrastructure — `question_techniques` table, `essay_mark_scheme_levels` table, `marking_audit_log` table (RLS, service-role only, 7-year retention comment), `marking_rate_limits` table; extended `questions` with 13 new columns (`topic_node`, `sub_concept`, `marks`, `command_word`, `technique_id`, `technique_rationale`, `model_answer`, `mark_scheme_points`, `indicative_content`, `examiner_notes`, `ao`, `wjec_tier`, `question_version`); extended `answer_log` with 10 new columns (`response_text`, `marking_status`, `marking_model`, `marking_prompt_version`, `question_version`, `marked_at`, `human_reviewed`, `human_review_score`, `human_review_notes`, `human_reviewed_at`); CHECK constraints on `bloom_level` and `correct_idx`; partial index on `answer_log.marking_status`
-- **Migration 015**: `marking_audit_log.answer_log_id` FK changed from ON DELETE CASCADE to ON DELETE SET NULL; column made nullable — audit rows survive answer_log erasure per DPIA
-- **Backfill complete**: 21 existing L4/L5 essay questions populated into new schema — `mark_scheme_points` and `indicative_content` extracted from `marking_prompt` JSONB; 84 `essay_mark_scheme_levels` rows generated (4 bands × 21 questions); `question_version` set to `v1` on all
+- **001–013**: core schema (profiles, courses, units, knowledge graph, questions, user tables, SM-2 queue, answer log, progress rollup, trigger, seed data)
+- **014**: essay infrastructure — `question_techniques`, `essay_mark_scheme_levels`, `marking_audit_log`, `marking_rate_limits`; 13 new columns on `questions`; 10 new columns on `answer_log`
+- **015**: `marking_audit_log.answer_log_id` FK → SET NULL on delete (DPIA)
+- **016**: backfilled `questions.marks` from `essay_mark_scheme_levels.level_order=1` mark_range
+- **017**: `ladder_state` table (PK `user_id, unit_id`; RLS); `session_mode text CHECK (IN ('review','focus','ladder'))` added to `answer_log` (nullable; NULL = pre-ladder attempts)
+
+---
+
+## Not in iteration 1 (Bloom's ladder)
+
+From design proposal §7 — these were explicitly deferred:
+
+- Three-component mastery score (retention, depth, coverage) — iteration 2; ladder attempts are already tagged `session_mode = 'ladder'` so depth data is accumulating
+- Mode suggestion logic ("app recommends best mode") — future iteration
+- Re-attempting passed rungs — forward-moving only; add if student feedback requests it
+- Celebrations, badges, animations beyond the transition screen
+- Leaderboard or social comparison
+- Essay-feeds-SM-2 fix — parked pending calibration
+- A-Level content — iteration 3
+- Admin threshold UI — config file + redeploy is the current procedure (see Known Limitations)
+- Course-level ladder overview ("your progress across all units") — future
 
 ---
 
 ## What's not yet wired up
 
-- Essay question UI live (session 5): free-text textarea, submission confirmation modal, marking-in-progress state with animated dots and rotating messages, structured feedback panel (score banner, mark points awarded/missed, feedback paragraph, gaps, conditional model answer reveal on Partial/Minimal band), retry flow, re-mark request (writes `marking_status = 'under_review'` + note to `answer_log` via `/api/mark/remark`)
-- Mixed session support: session page detects `bloom_level >= 4` and renders `EssayCard` instead of `QuestionCard`; MCQ and essay questions can appear in the same session queue
-- Re-mark requests written to `answer_log.marking_status = 'under_review'` — no admin reviewer UI yet; review via Supabase dashboard
-- Conditional model answer reveal: only shown when band is Partial or Minimal AND `model_answer` is non-null (all 21 backfilled questions have `model_answer = null` — will populate via future xlsx import)
-- Mobile-responsive textarea: auto-grow, min 6 rows, max 20 rows desktop / max 10 rows mobile
-- `distinguishes_this_level` empty on all 84 backfilled rows — legacy JSONB had no equivalent field; populated via xlsx import or manual edit
-- `ao` and `wjec_tier` null on all 21 backfilled questions — same cause; populated via xlsx import only
+- Re-mark requests written to `answer_log.marking_status = 'under_review'` — no admin reviewer UI; review via Supabase dashboard
+- `model_answer` null on all 21 backfilled essay questions — conditional reveal in `EssayCard` is wired but will only fire after xlsx import populates the field
+- `distinguishes_this_level` empty on all 84 `essay_mark_scheme_levels` rows — prompt skips gracefully
+- `ao` and `wjec_tier` null on all 21 backfilled questions — same; prompt skips gracefully
 - Motion xlsx awaiting A-Level course infrastructure
-- Topic-node mapping system stub created (`data/topic-node-mappings.json`); WJEC-GCSE-PHY-DA section present but unpopulated — values to be filled in by hand against `data/wjec-gcse-physics-concepts.txt`
-- `concept_id` will be null on xlsx-imported questions until topic-node mapping is populated and a re-import is run
+- `concept_id` null on xlsx-imported questions until topic-node mapping is populated
 
 ---
 
 ## Planned next
 
-- Session 5: manual calibration of marker on existing 21 essay questions
-- Session 6: author additional GCSE L4/L5 essay content for thin topics
-- Future: A-Level Physics infrastructure (course, units, knowledge graph nodes), Motion xlsx import as seed content
+- Manual calibration of marker on existing 21 essay questions
+- Author additional L3–L5 content for thin rungs (see coverage report — Waves L3 and The Universe L3 have 1 question each; threshold unreachable before exhaustion)
+- A-Level Physics infrastructure (course, units, knowledge graph nodes), Motion xlsx import
+- Iteration 2: three-component mastery score — ladder `session_mode = 'ladder'` data feeds the depth component
+
+---
+
+## Behaviour notes
+
+- **Ladder: `ladder_state` row is created on first entry to the ladder session, not on unit hub view.** Visiting the unit hub (which shows the ladder entry card) does not register the student as having started the ladder. "Not started" on the entry card means the student has never clicked into a ladder session for that unit. This was the root cause of the FC-6 persistence failure during verification: the old code called `getOrInitState` from the hub page, which created the row before the student had entered the session, making the entry card unable to distinguish "never started" from "zero progress." Fixed by splitting into `readLadderState` (hub, read-only) and `getOrInitState` (session, creates row).
+
+- **Ladder: new higher content added while student has already passed the top rung.** If L4 questions are added to a unit the student completed as a 3-rung L1–L3 ladder, `reachedTop` re-evaluates to false and the student resumes at L3 (must re-pass to unlock L4). Conservative but undesigned — revisit if student feedback shows confusion.
+
+---
+
+## Known limitations
+
+- **Ladder pass threshold requires a code redeploy to change.** Values live in `lib/ladder/config.ts` (TypeScript constant). Design proposal §1 specified "tunable without code release" — this is a gap. Moving config to a `ladder_config` DB table is deferred to iteration 2 when operational data warrants it. Vercel redeploy takes ~2 minutes.
 
 ---
 
 ## Current issues to address
 
-- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; prompt skips gracefully via progressive enrichment
-- 21 backfilled questions have `ao` and `wjec_tier` as NULL — same cause; prompt skips gracefully
-- `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA); no permissive RLS policy — writes use service_role client
-- Rate limit upsert has a theoretical race condition on two simultaneous first-ever requests from the same user — not a practical issue at current scale; parked for future hardening
-- Essay attempts do NOT update the SM-2 queue — the marking endpoint has no SM-2 logic, so essay questions remain "due" after an attempt and will reappear in future sessions. Correct behaviour for essays (retry semantics differ from MCQ) but needs a dedicated spaced-repetition strategy; deferred to a future session focused on essay-specific SM-2 semantics
-- `marking_prompt` JSONB column retained in DB and in type definitions but no longer read by the marker — to be dropped in a future migration once data is confirmed fully migrated
+- **Ladder content too thin to reach threshold on several rungs.** Waves L3 (1q), The Universe L3 (1q), Electricity L4 (1q), and all L5 rungs (1–2q each): a student will hit Screen D (exhausted) before accumulating the 3 attempts needed to evaluate the threshold. See `docs/reports/ladder-coverage-2026-04.md` for the full picture. Authoring priority before enabling the ladder for students.
+- `distinguishes_this_level` empty on all backfilled `essay_mark_scheme_levels` rows — legacy JSONB lacked the field; prompt skips gracefully
+- `marking_audit_log` FK is SET NULL on parent delete (correct for DPIA); writes use service_role client
+- Rate limit upsert has a theoretical race condition on two simultaneous first-ever requests from the same user — not a practical issue at current scale; parked
+- Essay attempts do not update the SM-2 queue — essay questions remain due after an attempt; dedicated essay SM-2 strategy deferred
+- `marking_prompt` JSONB column retained in DB and type definitions but no longer read — drop in a future migration once data is confirmed fully migrated
